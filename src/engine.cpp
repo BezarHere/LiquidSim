@@ -3,22 +3,9 @@
 
 //! GO GLOBAL VARIABLES HELL! GO!
 
-constexpr int ChunkSizeBitshift = 5;
-constexpr Vector2i ChunkSize = { 1 << ChunkSizeBitshift, 1 << ChunkSizeBitshift };
+Vector2f g_ParticlePlacmentSpacing = { 14.0f, 14.0f };
 
-constexpr Vector2i ParticleMapSize = { 64, 64 };
-constexpr size_t ParticleCount = ParticleMapSize.area();
-
-constexpr float PressureCurveRadius = 32.0f;
-constexpr float PressureCurveRadiusSquared = PressureCurveRadius * PressureCurveRadius;
-constexpr Vector2i PressureHalfAABBSize = Vector2i(int(PressureCurveRadius) / 2, int(PressureCurveRadius) / 2);
-
-constexpr Recti WorldRect{ 0, 0, 1200, 900 };
-constexpr Vector2i ChunksMapSize = (WorldRect.size() / ChunkSize) + Vector2i{ 1, 1 };
-constexpr size_t ChunksCount = (size_t)ChunksMapSize.area();
-
-
-float g_StiffnessMultiplair = 0.2;
+float g_StiffnessMultiplair = 0.3;
 float g_CollisionDampingFactor = 0.1;
 Vector2f g_Gravity = { 0.f, 98.f };
 
@@ -48,18 +35,9 @@ struct Chunk
 
 std::array<Chunk, ChunksCount> g_ParticleChunks;
 
-
-
-FORCEINLINE float pressure_curve_sq(float distance_squared)
+FORCEINLINE float get_pressure(float distance)
 {
-	constexpr float PressureEffectArea = Pi * PressureCurveRadiusSquared / 4.0f;
-	 const float v = std::max(0.0f, PressureCurveRadiusSquared - distance_squared);
-	 return v * v * v / PressureEffectArea;
-}
-
-FORCEINLINE float pressure_curve(float distance)
-{
-	return pressure_curve_sq(distance * distance);
+	return 1.0 - (distance / PressureCurveRadius) + (3.0 * std::max(0.f, Particle::Radius - distance) / Particle::Radius);
 }
 
 Recti Engine::get_world_rect()
@@ -102,24 +80,39 @@ FORCEINLINE Chunk &get_chunk_containing(Vector2i pos)
 	return get_chunk(to_chunk_position(pos));
 }
 
-
 FORCEINLINE Vector2f _calc_pressure_force_from_chunk(Vector2i chunk, Vector2f from_pos)
 {
 	Vector2f force{};
 	for (const particle_id_t p : get_chunk(chunk).ids)
 	{
 		Particle *particle = get_particle_ptr(p);
-		const float distance = from_pos.distance_squared(particle->position());
+		const float distance = from_pos.distance(particle->position());
 
-		if (distance >= PressureCurveRadiusSquared)
+		if (distance >= PressureCurveRadius)
 			continue;
 
-		const Vector2f f = (from_pos - particle->position()) * pressure_curve_sq(distance);
+		const Vector2f f = (from_pos - particle->position()) * get_pressure(distance);
 		particle->velocity(particle->velocity() - f);
 
 		force += f;
 	}
 	return force * g_StiffnessMultiplair;
+}
+
+FORCEINLINE float _calc_density_in_chunk(Vector2i chunk, Vector2f pos)
+{
+	float force{};
+	for (const particle_id_t p : get_chunk(chunk).ids)
+	{
+		Particle *particle = get_particle_ptr(p);
+		const float distance = pos.distance(particle->position());
+
+		if (distance >= PressureCurveRadius)
+			continue;
+
+		force += get_pressure(std::sqrt(distance));
+	}
+	return force;
 }
 
 FORCEINLINE Vector2f _calc_pressure_force_from_chunk_safe(Vector2i chunk, Vector2f from_pos)
@@ -198,13 +191,32 @@ void Engine::start()
 {
 	assert(!g_StartedEngine);
 	g_StartedEngine = true;
+	Vector2f pgrid_spacing = g_ParticlePlacmentSpacing;
+	Vector2f pgrid_size = Vector2f(ParticleMapSize) * g_ParticlePlacmentSpacing;
+	if (pgrid_size.x > WorldRect.w)
+	{
+		pgrid_spacing.x = (float)(WorldRect.w / ParticleMapSize.x);
+		pgrid_size.x = ParticleMapSize.x * pgrid_spacing.x;
+	}
+	
+	if (pgrid_size.y > WorldRect.h)
+	{
+		pgrid_spacing.y = (float)(WorldRect.h / ParticleMapSize.y);
+		pgrid_size.y = ParticleMapSize.y * pgrid_spacing.y;
+	}
+
+	const Vector2f pgrid_offset = (WorldRect.size() - pgrid_size) / 2.0f;
 
 	for (int x = 0; x < ParticleMapSize.x; x++)
 	{
 		for (int y = 0; y < ParticleMapSize.y; y++)
 		{
 			const particle_id_t i = to_particle_index({ x, y });
-			g_Particles[ i ] = SPParticle_t(new Particle{ Vector2f{ 32.f + (float)(x * 10), 32.f + (float)(y * 10) } });
+			g_Particles[ i ] = SPParticle_t(
+				new Particle{
+					Vector2f{ float(x * pgrid_spacing.x), float(y * pgrid_spacing.y) } + pgrid_offset
+				}
+			);
 		}
 	}
 }
@@ -218,7 +230,7 @@ void Engine::update()
 	for (size_t i = 0; i < ParticleCount; i++)
 	{
 		g_Particles[ i ]->m_vel += calc_pressure(i);
-		g_Particles[ i ]->m_vel *= 0.97f;
+		//g_Particles[ i ]->m_vel *= 0.97f;
 	}
 
 	for (const SPParticle_t &p : g_Particles)

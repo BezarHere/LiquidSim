@@ -1,10 +1,15 @@
 #pragma once
 #include "pch.h"
 
+
+
+
 class Particle
 {
 	friend class Engine;
 public:
+	static constexpr float Radius = 4.f;
+
 	Particle(Vector2f pos);
 
 	void draw(ig::Context2D &c) const;

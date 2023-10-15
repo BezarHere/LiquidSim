@@ -1,8 +1,6 @@
 #include "pch.h"
 #include "particle.h"
 
-constexpr Vector2i DrawSize = { 8, 8 };
-constexpr Vector2i HDrawSize = { DrawSize.x >> 1, DrawSize.y >> 1 };
 
 
 FORCEINLINE constexpr byte lerp(byte a, byte b, float l)
@@ -35,9 +33,10 @@ Particle::Particle(Vector2f pos)
 
 void Particle::draw(ig::Context2D &c) const
 {
-	c.rect(
-		m_pos - HDrawSize,
-		m_pos + HDrawSize,
-		lerp3({ 60, 60, 255 }, { 60, 255, 60 }, { 255, 60, 60 }, std::min(m_vel.length() / 360.f, 1.f))
+	c.circle(
+		Radius,
+		m_pos,
+		lerp3({ 60, 60, 255 }, { 60, 255, 60 }, { 255, 60, 60 }, std::min(m_vel.length() / 360.f, 1.f)),
+		8
 	);
 }

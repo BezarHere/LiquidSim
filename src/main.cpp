@@ -7,7 +7,7 @@ int main()
 
 	ig::ApplicationConfig cfg{};
 	cfg.fullscreen = false;
-	cfg.size = { 500, 350 };
+	cfg.size = WorldRect.size() + Vector2i{32, 32};
 	cfg.title = "LiqSim";
 
 	ig::Application app{ cfg };
